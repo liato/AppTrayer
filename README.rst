@@ -14,7 +14,7 @@ Usage
 
 Minimizing a long running python script to the system tray:
 
-    apptrayer.exe "C:\python26\python.exe" "C:\path to\my\script.py"
+    apptrayer.exe "C:\\python26\\python.exe" "C:\\path to\\my\\script.py"
    
     
     
