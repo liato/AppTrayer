@@ -61,18 +61,30 @@ namespace AppTrayer
         Thread t;
         bool visible = true;
 
-
         public Main()
         {
             InitializeComponent();
-        }
 
-        private void Form1_Load(object sender, EventArgs e)
-        {
-            this.Hide();
             String[] args = Environment.GetCommandLineArgs();
-            //MessageBox.Show(String.Join(", ", args));
-            if (args.Length < 2)
+            Dictionary<string, string> switches = new Dictionary<string, string>();
+            List<string> targetargs = new List<string>();
+            bool switchend = false;
+            var subset = args.Skip(1).Take(args.Length - 1);
+            foreach (string arg in subset)
+            {
+                if (arg.StartsWith("--") && !switchend)
+                {
+                    string[] s = arg.Split('=');
+                    switches.Add(s[0].Substring(2, s[0].Length - 2), (s.Length > 1) ? s[1] : null);
+                }
+                else
+                {
+                    switchend = true;
+                    targetargs.Add(arg);
+                }
+            }
+
+            if (targetargs.Count < 1)
             {
                 MessageBox.Show("No application to start. Exiting.");
                 Application.Exit();
@@ -82,10 +94,14 @@ namespace AppTrayer
             try
             {
                 p = new Process();
-                p.StartInfo = new ProcessStartInfo(args[1]);
+                p.StartInfo = new ProcessStartInfo(targetargs[0]);
                 if (args.Length > 2)
                 {
-                    p.StartInfo.Arguments = String.Join(" ", ((List<String>)args.ToList<String>().GetRange(2, args.Length - 2)).ToArray());
+                    p.StartInfo.Arguments = String.Join(" ", targetargs.GetRange(1, targetargs.Count - 1).ToArray());
+                }
+                if (switches.ContainsKey("minimize") || switches.ContainsKey("minimized"))
+                {
+                    p.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
                 }
                 p.EnableRaisingEvents = true;
                 p.Start();
@@ -96,32 +112,49 @@ namespace AppTrayer
                     p.Refresh();
                     hwnd = p.MainWindowHandle;
                 }
-                //MessageBox.Show(hwnd.ToString());
-                //MessageBox.Show(p.MainModule.FileName.ToString());
-                p.Exited += new EventHandler(app_exited);
-                notifyIcon.Text = p.MainWindowTitle;
-                //notifyIcon.Icon = Icon.FromHandle(GetClassLongPtr(hwnd, 0));//largeIico;
 
-                IntPtr hIcon = (IntPtr)SendMessage(hwnd, WM_GETICON, ICON_SMALL2, 0);
-                if (hIcon == IntPtr.Zero)
-                    hIcon = (IntPtr)SendMessage(hwnd, WM_GETICON, ICON_SMALL, 0);
-                if (hIcon == IntPtr.Zero)
-                    hIcon = (IntPtr)SendMessage(hwnd, WM_GETICON, ICON_BIG, 0);
-                if (hIcon == IntPtr.Zero)
-                    hIcon = (IntPtr)GetClassLongPtr(hwnd, GCL_HICONSM);
-                if (hIcon == IntPtr.Zero)
-                    hIcon = GetClassLongPtr(hwnd, GCL_HICON);
-                if (hIcon == IntPtr.Zero)
+                p.Exited += new EventHandler(app_exited);
+                if (switches.ContainsKey("minimize") || switches.ContainsKey("minimized"))
+                    setVisible(false);
+                notifyIcon.Text = p.MainWindowTitle;
+
+                bool icon_is_set = false;
+                if (switches.ContainsKey("icon"))
                 {
-                    IntPtr[] largeIcon = new IntPtr[1];
-                    IntPtr[] smallIcon = new IntPtr[1];
-                    ExtractIconEx(p.MainModule.FileName.ToString(), 0, largeIcon, smallIcon, 1);
-                    hIcon = smallIcon[0];
-                    if (hIcon == IntPtr.Zero)
-                        hIcon = largeIcon[0];
+                    try
+                    {
+                        notifyIcon.Icon = new System.Drawing.Icon(switches["icon"]);
+                        icon_is_set = true;
+                    }
+                    //invalid icon path
+                    catch (ArgumentException) { }
+                    catch (System.IO.FileNotFoundException) { }
+
                 }
-                if (hIcon != IntPtr.Zero)
-                    notifyIcon.Icon = Icon.FromHandle(hIcon);
+
+                if (!icon_is_set)
+                {
+                    IntPtr hIcon = (IntPtr)SendMessage(hwnd, WM_GETICON, ICON_SMALL2, 0);
+                    if (hIcon == IntPtr.Zero)
+                        hIcon = (IntPtr)SendMessage(hwnd, WM_GETICON, ICON_SMALL, 0);
+                    if (hIcon == IntPtr.Zero)
+                        hIcon = (IntPtr)SendMessage(hwnd, WM_GETICON, ICON_BIG, 0);
+                    if (hIcon == IntPtr.Zero)
+                        hIcon = (IntPtr)GetClassLongPtr(hwnd, GCL_HICONSM);
+                    if (hIcon == IntPtr.Zero)
+                        hIcon = GetClassLongPtr(hwnd, GCL_HICON);
+                    if (hIcon == IntPtr.Zero)
+                    {
+                        IntPtr[] largeIcon = new IntPtr[1];
+                        IntPtr[] smallIcon = new IntPtr[1];
+                        ExtractIconEx(p.MainModule.FileName.ToString(), 0, largeIcon, smallIcon, 1);
+                        hIcon = smallIcon[0];
+                        if (hIcon == IntPtr.Zero)
+                            hIcon = largeIcon[0];
+                    }
+                    if (hIcon != IntPtr.Zero)
+                        notifyIcon.Icon = Icon.FromHandle(hIcon);
+                }
                 t = new Thread(check_winstate);
                 t.Start();
 
@@ -133,6 +166,12 @@ namespace AppTrayer
                 return;
             }
 
+        
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            this.Hide();
         }
 
         void check_winstate()
@@ -149,7 +188,6 @@ namespace AppTrayer
 
         void app_exited(object sender, EventArgs e)
         {
-            //MessageBox.Show(((Process)sender).ProcessName + " process has exited!");
             t.Abort();
             Application.Exit();
         }
@@ -170,15 +208,32 @@ namespace AppTrayer
         {
             ShowWindow(hwnd, v ? 1 : 0);
             visible = v;
-            SetForegroundWindow(hwnd);
-            //if (v)
-            //    Thread.Sleep(100);
-            //    SetFocus(hwnd);
+            if (v)
+                SetForegroundWindow(hwnd);
+            this.minimizeToolStripMenuItem.Visible = v;
+            this.restoreToolStripMenuItem.Visible = !v;
+
         }
 
         private void notifyIcon_MouseClick(object sender, MouseEventArgs e)
         {
-            togglevisibility();
+            if (e.Button == MouseButtons.Left)
+                togglevisibility();
+        }
+
+        private void closeToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            p.Kill();
+        }
+
+        private void minimizeToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            setVisible(false);
+        }
+
+        private void restoreToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            setVisible(true);
         }
     }
 }
