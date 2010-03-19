@@ -14,7 +14,7 @@ Usage
 
 Minimizing a long running python script to the system tray with a custom icon:
 
-    apptrayer.exe --icon=C:\path\to\icon.ico "C:\\python26\\python.exe" "C:\\path to\\my\\script.py"
+    apptrayer.exe --icon=C:\\path\\to\\icon.ico "C:\\python26\\python.exe" "C:\\path to\\my\\script.py"
    
 
 Options
